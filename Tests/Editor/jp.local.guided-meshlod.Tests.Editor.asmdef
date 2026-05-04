@@ -1,0 +1,24 @@
+{
+    "name": "jp.local.guided-meshlod.Tests.Editor",
+    "rootNamespace": "Jp.Local.GuidedMeshLod.Tests",
+    "references": [
+        "jp.local.guided-meshlod.Editor",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

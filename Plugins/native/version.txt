@@ -1,0 +1,22 @@
+meshoptimizer pinned commit
+============================
+upstream: https://github.com/zeux/meshoptimizer
+commit:   c8359675ccc26d8cca38e0d5b2282d5e3372356a
+date:     2026-04-29 08:22:33 -0700
+subject:  indexcodec: Fix array formatting to avoid clang-format wrapping
+
+Symbols required by Jp.Local.GuidedMeshLod (verified in src/meshoptimizer.h
+at this commit, line 514): meshopt_simplifyWithAttributes
+
+Building the native binary
+---------------------------
+Both build scripts clone the upstream repo at the pinned commit into a
+temp directory, build with cmake, copy the output next to this version.txt,
+then clean up. Run from inside this folder.
+
+  Windows 11 x64:        pwsh ./build_windows.ps1     (or PowerShell 5.1)
+  macOS 11+ universal:   bash ./build_macos.sh
+
+Both scripts require: git, cmake. macOS additionally requires Xcode CLT.
+The Windows DLL and macOS bundle/dylib are committed alongside the script,
+so first-time clones on either platform have a working binary already.

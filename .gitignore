@@ -1,0 +1,28 @@
+# OS / file system noise
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+*~
+
+# IDE / editor caches
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*.userprefs
+
+# Native build script intermediates
+# (build_macos.sh / build_windows.ps1 use $TMPDIR / $env:TEMP, but be defensive
+# in case someone runs cmake directly inside Plugins/native/.)
+Plugins/native/build/
+Plugins/native/_build/
+Plugins/native/*.pdb
+Plugins/native/*.exp
+Plugins/native/*.lib
+Plugins/native/*.ilk
+Plugins/native/*.dSYM/
+
+# Unity package convention: Samples~/ (with trailing tilde) is intentionally
+# committed; do NOT ignore it. Likewise meta files MUST be committed.

@@ -1,0 +1,47 @@
+本ファイルは、上流プロジェクト meshoptimizer
+(https://github.com/zeux/meshoptimizer) の MIT License を原文のまま収録し
+たものです。本フォルダは meshoptimizer のソースから生成したバイナリ
+(meshoptimizer.dll / meshoptimizer.dylib) を再配布しており、MIT License は
+その配布物に著作権表示とライセンス本文を同梱することを義務付けています。
+完全な帰属情報とピン留めコミットハッシュは ../Third Party Notices.md を
+参照してください。
+
+NOTE (legal): 本ファイル中の MIT License 条文（以下「================ 」より下）
+は英語原文が法的に正となります。日本語による要約や訳は参考情報にすぎず、
+解釈に齟齬が生じた場合は英語原文が優先されます。
+
+--------------------------------------------------------------------------------
+
+This file is the verbatim MIT License of the upstream meshoptimizer project
+(https://github.com/zeux/meshoptimizer). It is reproduced here because this
+folder ships a pre-built binary (meshoptimizer.dll / meshoptimizer.dylib)
+derived from that source. See ../Third Party Notices.md for the full
+attribution and the pinned commit hash.
+
+NOTE (legal): the MIT License text below the "==========" line is authoritative
+in its original English. Any Japanese summary or translation in this header is
+informational only; in case of conflict, the English text prevails.
+
+================================================================================
+
+MIT License
+
+Copyright (c) 2016-2026 Arseny Kapoulkine
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

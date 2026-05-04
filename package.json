@@ -1,0 +1,19 @@
+{
+  "name": "jp.local.guided-meshlod",
+  "version": "0.1.0",
+  "displayName": "Guided Mesh LOD",
+  "description": "アーティストが lock channel (UV / Color) で simplify を誘導できる MeshLOD ビルドパイプライン。Unity 6.3 純正の Mesh LOD API（MeshLodRange / Mesh.SetLods / RenderParams.forceMeshLod）の上に meshoptimizer を組み込み、保護領域を持つ削減を実現する。",
+  "unity": "6000.3",
+  "keywords": [
+    "mesh",
+    "lod",
+    "meshoptimizer",
+    "tooling"
+  ],
+  "author": {
+    "name": "Local Project"
+  },
+  "testables": [
+    "jp.local.guided-meshlod.Editor"
+  ]
+}
