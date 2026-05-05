@@ -57,6 +57,8 @@ namespace Jp.Local.GuidedMeshLod.Tests
         }
 
         // §12-B 回帰：per-submesh の sum(MeshLodRange.indexCount) = SubMeshDescriptor.indexCount
+        // 空 list（= maxLod==1 で SetLods が呼ばれていない場合）はスキップ：
+        // SubMeshDescriptor.indexCount が暗黙の LOD 0 範囲として機能するため検証不要。
         public static void AssertSumLodRangesEqualSubmeshIndexCount(Mesh mesh)
         {
             var list = new List<MeshLodRange>();
@@ -64,6 +66,8 @@ namespace Jp.Local.GuidedMeshLod.Tests
             {
                 list.Clear();
                 mesh.GetLods(list, i);
+                if (list.Count == 0) continue;
+
                 uint sum = 0;
                 foreach (var r in list) sum += r.indexCount;
                 Assert.AreEqual(

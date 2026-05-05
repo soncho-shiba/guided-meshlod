@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -16,7 +17,49 @@ namespace Jp.Local.GuidedMeshLod
             return BuildCore(source, parameters, settings, lockFlags, markNoLongerReadable: false);
         }
 
-        // BuildAsAsset は Phase 6 で実装。
+        // 最終アセットとして保存。settings.markFinalAssetNoLongerReadable に従い CPU データを破棄する。
+        // outputAssetPath は "Assets/" 以下の相対パス（拡張子は .asset）。既存ファイルは上書き。
+        public static Mesh BuildAsAsset(
+            Mesh source,
+            BuildParams parameters,
+            MeshLodSettings settings,
+            string outputAssetPath)
+        {
+            if (string.IsNullOrEmpty(outputAssetPath))
+            {
+                throw new ArgumentException("outputAssetPath cannot be empty.", nameof(outputAssetPath));
+            }
+            var normalized = outputAssetPath.Replace('\\', '/');
+            if (!normalized.StartsWith("Assets/", StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    $"outputAssetPath must be inside Assets/, got '{outputAssetPath}'",
+                    nameof(outputAssetPath));
+            }
+            if (!normalized.EndsWith(".asset", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"outputAssetPath must end with .asset, got '{outputAssetPath}'",
+                    nameof(outputAssetPath));
+            }
+
+            ValidateInput(source, parameters);
+            var lockFlags = ChannelMapping.ExtractLockFlags(source, settings);
+
+            var markNoLongerReadable = settings != null && settings.markFinalAssetNoLongerReadable;
+            var dst = BuildCore(source, parameters, settings, lockFlags, markNoLongerReadable);
+
+            if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(normalized) != null)
+            {
+                AssetDatabase.DeleteAsset(normalized);
+            }
+
+            AssetDatabase.CreateAsset(dst, normalized);
+            AssetDatabase.SaveAssets();
+            Undo.RegisterCreatedObjectUndo(dst, "Build Guided MeshLOD");
+
+            return dst;
+        }
 
         // -----------------------------------------------------------------
         // Build core (§6 シーケンスの実装)
@@ -164,11 +207,18 @@ namespace Jp.Local.GuidedMeshLod
             {
                 if (actualLodCount[i] > maxLod) maxLod = actualLodCount[i];
             }
-            dst.lodCount = maxLod;
 
-            for (var i = 0; i < subMeshCount; i++)
+            // 全 submesh が LOD 0 のみの場合（maxLod == 1）は Mesh LOD 機能を有効化しない。
+            // この状態で `dst.lodCount = 1` ＆ `SetLods` を呼ぶと §12-F の
+            // ValidateCanWriteToLods が `"Unable to modify LOD0... lodCount > 1"` で拒否する。
+            // SetSubMesh で登録した index range が submesh 全体＝LOD 0 を覆うため SetLods は不要。
+            if (maxLod > 1)
             {
-                dst.SetLods(lodRanges[i], i, MeshUpdateFlags.Default);
+                dst.lodCount = maxLod;
+                for (var i = 0; i < subMeshCount; i++)
+                {
+                    dst.SetLods(lodRanges[i], i, MeshUpdateFlags.Default);
+                }
             }
 
             dst.RecalculateBounds();
