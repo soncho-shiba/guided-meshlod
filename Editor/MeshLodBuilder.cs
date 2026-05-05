@@ -29,8 +29,9 @@ namespace Jp.Local.GuidedMeshLod
             bool markNoLongerReadable)
         {
             var subMeshCount = src.subMeshCount;
+            var positions = src.vertices;
 
-            // Step 3: per-submesh LOD generation (Phase 3 dummy = uniform decimation)
+            // Step 3: per-submesh LOD generation (Phase 5: meshopt_simplifyWithAttributes via P/Invoke)
             var lodIndicesPerSubmesh = new uint[subMeshCount][][];
             var actualLodCount = new int[subMeshCount];
             for (var i = 0; i < subMeshCount; i++)
@@ -49,12 +50,34 @@ namespace Jp.Local.GuidedMeshLod
                         break;
                     }
 
-                    var reduced = UniformDecimate(prev, targetIndexCount, lockFlags);
-                    if (reduced.Length < 3 || reduced.Length >= prev.Length)
+                    var reduced = MeshoptNative.SimplifyWithLock(
+                        prev,
+                        positions,
+                        lockFlags,
+                        targetIndexCount,
+                        parameters.targetError,
+                        out var resultError);
+
+                    if (reduced.Length < 3)
                     {
                         Debug.Log($"[GuidedMeshLod] submesh {i} stops at LOD {k - 1}: " +
-                                  $"reduced={reduced.Length}, prev={prev.Length}.");
+                                  $"reduced={reduced.Length} (degenerate)");
                         break;
+                    }
+
+                    // 早期収束：前 LOD と差が無い／逆に大きいなら停止
+                    if (reduced.Length >= prev.Length)
+                    {
+                        Debug.Log($"[GuidedMeshLod] submesh {i} stops at LOD {k - 1}: " +
+                                  $"reduced={reduced.Length}, prev={prev.Length} (no progress)");
+                        break;
+                    }
+
+                    // target に大きく逸脱した場合は Info ログ（§7.2）
+                    if (reduced.Length > targetIndexCount * 1.5f || reduced.Length < targetIndexCount * 0.5f)
+                    {
+                        Debug.Log($"[GuidedMeshLod] submesh {i} LOD {k}: meshopt early convergence " +
+                                  $"(target={targetIndexCount}, got={reduced.Length}, error={resultError:F4})");
                     }
 
                     lods.Add(reduced);
@@ -223,44 +246,6 @@ namespace Jp.Local.GuidedMeshLod
                     nameof(parameters.targetError),
                     $"targetError must be in [0, 1], got {parameters.targetError}.");
             }
-        }
-
-        // -----------------------------------------------------------------
-        // Phase 3 dummy: Bresenham-style uniform triangle decimation.
-        // Phase 5 で meshopt_simplifyWithAttributes に置換する。
-        // lockFlags は Phase 5 で vertex_lock 引数に渡すための配線確保のみ。
-        // -----------------------------------------------------------------
-        private static uint[] UniformDecimate(uint[] srcIndices, int targetIndexCount, byte[] lockFlags)
-        {
-            _ = lockFlags; // 使わない（Phase 5 で配線）
-
-            var srcTriCount = srcIndices.Length / 3;
-            var targetTriCount = targetIndexCount / 3;
-            if (targetTriCount >= srcTriCount) return srcIndices;
-            if (targetTriCount < 1) return Array.Empty<uint>();
-
-            var kept = new uint[targetTriCount * 3];
-            var writeIdx = 0;
-            var err = 0;
-            for (var t = 0; t < srcTriCount && writeIdx < kept.Length; t++)
-            {
-                err += targetTriCount;
-                if (err >= srcTriCount)
-                {
-                    err -= srcTriCount;
-                    kept[writeIdx++] = srcIndices[t * 3 + 0];
-                    kept[writeIdx++] = srcIndices[t * 3 + 1];
-                    kept[writeIdx++] = srcIndices[t * 3 + 2];
-                }
-            }
-
-            if (writeIdx < kept.Length)
-            {
-                var trimmed = new uint[writeIdx];
-                Array.Copy(kept, trimmed, writeIdx);
-                return trimmed;
-            }
-            return kept;
         }
 
         // -----------------------------------------------------------------
