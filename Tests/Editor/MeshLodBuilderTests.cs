@@ -13,6 +13,10 @@ namespace Jp.Local.GuidedMeshLod.Tests
         [Test]
         public void U05_BuildInMemory_LOD0_indexCount_matches_source()
         {
+            // 仕様 §8.1 U-05 (a)：「LOD 0 が元 indices と一致」を **要素ごと** に検証する。
+            //   Unity 6.3 では `Mesh.GetIndices(submesh, meshLod, applyBaseVertex)` overload で
+            //   特定 LOD だけを取れる。引数なし版は LOD 0 のみを返すが、明示形のほうが意図が
+            //   明確なので `meshLod=0` を指定する（§12-G）。
             var src = MakeMultiSubmesh(triPerSubmesh: 30, submeshCount: 2);
             var settings = MakeSettings();
             var parameters = new BuildParams
@@ -34,9 +38,10 @@ namespace Jp.Local.GuidedMeshLod.Tests
                 Assert.GreaterOrEqual(lods.Count, 1, $"submesh {i} must have at least LOD 0");
 
                 var srcIdx = src.GetIndices(i);
-                Assert.AreEqual(
-                    (uint)srcIdx.Length, lods[0].indexCount,
-                    $"submesh {i} LOD 0 indexCount must equal src.GetIndices(i).Length");
+                var dstLod0 = dst.GetIndices(i, meshLod: 0, applyBaseVertex: true);
+
+                CollectionAssert.AreEqual(srcIdx, dstLod0,
+                    $"submesh {i} LOD 0 indices must match src.GetIndices(i) element-wise");
             }
         }
 
@@ -97,6 +102,43 @@ namespace Jp.Local.GuidedMeshLod.Tests
                     (uint)sd.indexCount, sumLodIndexCount,
                     $"submesh {i}: sum(MeshLodRange.indexCount) must equal SubMeshDescriptor.indexCount");
             }
+        }
+
+        [Test]
+        public void U05_BuildInMemory_submesh_major_IB_layout()
+        {
+            // 仕様 §4.2 / §12-B：連結 IB は submesh-major
+            //   submesh 0 から順に submesh 1, 2 ... が「直前 submesh の終端」から始まる必要がある。
+            //   submesh-major でない実装（例：LOD-major）に変わると fail する。
+            var src = MakeMultiSubmesh(triPerSubmesh: 30, submeshCount: 3);
+            var settings = MakeSettings();
+            var parameters = new BuildParams
+            {
+                lodCount = 3,
+                targetRatios = new[] { 0.5f, 0.25f },
+                targetError = 0.01f,
+            };
+
+            var dst = MeshLodBuilder.BuildInMemory(src, parameters, settings);
+
+            var sd0 = dst.GetSubMesh(0);
+            Assert.AreEqual(0, sd0.indexStart, "first submesh must start at index 0");
+
+            var totalIndexCount = sd0.indexCount;
+            for (var i = 1; i < dst.subMeshCount; i++)
+            {
+                var prev = dst.GetSubMesh(i - 1);
+                var cur = dst.GetSubMesh(i);
+                Assert.AreEqual(
+                    prev.indexStart + prev.indexCount, cur.indexStart,
+                    $"submesh {i} must start where submesh {i - 1} ends (submesh-major IB layout)");
+                totalIndexCount += cur.indexCount;
+            }
+
+            var last = dst.GetSubMesh(dst.subMeshCount - 1);
+            Assert.AreEqual(
+                totalIndexCount, last.indexStart + last.indexCount,
+                "sum of all submesh indexCounts must equal last.indexStart + last.indexCount");
         }
 
         [Test]
@@ -164,6 +206,63 @@ namespace Jp.Local.GuidedMeshLod.Tests
                 var target2 = (uint)(srcIdx.Length * 0.25f);
                 AssertWithinRatio(lods[2].indexCount, target2, tolerance: 0.6f,
                     label: "LOD 2");
+            }
+        }
+
+        [Test]
+        public void U06_BuildInMemory_locked_vertices_preserved_in_low_LOD()
+        {
+            // 仕様 F-5.2 / §4.3：lock 配線が meshopt_simplifyWithAttributes の vertex_lock まで届いているか。
+            //   grid 4 隅に UV2.X = 1.0 を設定し lock。lockThreshold=0.5 で UV.X 経路が発火する。
+            //   LOD 2（25% target）まで削減しても 4 隅の vertex index がすべて残ることを assert。
+            //   meshopt の lock は「優先保持」であり 100% 保証ではないが、4 隅 / grid 20 という小集合なら
+            //   実用上は完全保持される。fail 時は lock 集合を縮めて再調整する設計。
+            //   LOD 2 の indices を取得するには Unity 6.3 の `GetIndices(submesh, meshLod, applyBaseVertex)`
+            //   overload を使用する（引数なし版は LOD 0 のみ返すため、§12-G）。
+            const int gridSize = 20;
+            var n = gridSize + 1;
+            var lockedVertices = new[]
+            {
+                0,                  // (0,0)
+                gridSize,           // (gridSize, 0)
+                gridSize * n,       // (0, gridSize)
+                gridSize * n + gridSize, // (gridSize, gridSize)
+            };
+
+            var src = MakeGridMeshWithLockUV(gridSize, lockedVertices);
+            var settings = MakeSettings();
+            settings.lockSource = MeshLodSettings.LockSourceKind.UV;
+            settings.uvChannel = 2;
+            settings.uvComponent = MeshLodSettings.UVComponent.X;
+            settings.lockThreshold = 0.5f;
+
+            var parameters = new BuildParams
+            {
+                lodCount = 3,
+                targetRatios = new[] { 0.5f, 0.25f },
+                targetError = 0.5f, // 削減を強くかけて lock 効果を浮き上がらせる
+            };
+
+            var dst = MeshLodBuilder.BuildInMemory(src, parameters, settings);
+
+            var lods = new List<MeshLodRange>();
+            dst.GetLods(lods, 0);
+            Assert.GreaterOrEqual(lods.Count, 3,
+                $"meshopt should produce 3 LODs for grid({gridSize}) (got {lods.Count})");
+
+            // LOD 2 の indices を直接取得（Unity 6.3 overload、§12-G）
+            var lod2Indices = dst.GetIndices(submesh: 0, meshLod: 2, applyBaseVertex: true);
+
+            Assert.AreEqual((int)lods[2].indexCount, lod2Indices.Length,
+                "GetIndices(submesh, lod=2) length must equal MeshLodRange[2].indexCount");
+
+            var lod2Set = new HashSet<int>(lod2Indices);
+            foreach (var lockedV in lockedVertices)
+            {
+                Assert.IsTrue(
+                    lod2Set.Contains(lockedV),
+                    $"locked vertex {lockedV} must appear in LOD 2 (vertex_lock should reach native side). " +
+                    $"LOD 2 has {lod2Indices.Length} indices, {lod2Set.Count} unique vertices.");
             }
         }
 
@@ -373,6 +472,61 @@ namespace Jp.Local.GuidedMeshLod.Tests
                     : IndexFormat.UInt32,
             };
             mesh.SetVertices(verts);
+            mesh.SetIndices(indices, MeshTopology.Triangles, 0, calculateBounds: false);
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        // MakeGridMesh と同形だが、UV2.X に lock マスクを書き込んだバリアント。
+        //   lockedVertexIndices に含まれる頂点は UV2.X = 1.0、それ以外は UV2.X = 0.0。
+        private static Mesh MakeGridMeshWithLockUV(int gridSize, int[] lockedVertexIndices)
+        {
+            var n = gridSize + 1;
+            var verts = new Vector3[n * n];
+            for (var y = 0; y < n; y++)
+            {
+                for (var x = 0; x < n; x++)
+                {
+                    verts[y * n + x] = new Vector3(x, y, 0);
+                }
+            }
+
+            var indices = new int[gridSize * gridSize * 6];
+            var idx = 0;
+            for (var y = 0; y < gridSize; y++)
+            {
+                for (var x = 0; x < gridSize; x++)
+                {
+                    var v00 = y * n + x;
+                    var v10 = v00 + 1;
+                    var v01 = v00 + n;
+                    var v11 = v01 + 1;
+                    indices[idx++] = v00;
+                    indices[idx++] = v01;
+                    indices[idx++] = v11;
+                    indices[idx++] = v00;
+                    indices[idx++] = v11;
+                    indices[idx++] = v10;
+                }
+            }
+
+            // UV2: lock 対象の頂点だけ X=1.0
+            var uv2 = new Vector2[verts.Length];
+            var lockSet = new HashSet<int>(lockedVertexIndices);
+            for (var i = 0; i < verts.Length; i++)
+            {
+                uv2[i] = lockSet.Contains(i) ? new Vector2(1f, 0f) : new Vector2(0f, 0f);
+            }
+
+            var mesh = new Mesh
+            {
+                name = $"GridMeshLockUV_{gridSize}",
+                indexFormat = verts.Length <= ushort.MaxValue
+                    ? IndexFormat.UInt16
+                    : IndexFormat.UInt32,
+            };
+            mesh.SetVertices(verts);
+            mesh.SetUVs(2, uv2);
             mesh.SetIndices(indices, MeshTopology.Triangles, 0, calculateBounds: false);
             mesh.RecalculateBounds();
             return mesh;
