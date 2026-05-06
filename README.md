@@ -11,7 +11,7 @@ Unity 6.3 純正の Mesh LOD API（`MeshLodRange` / `Mesh.SetLods` / `RenderPara
 | Render Pipeline | URP / HDRP どちらでも可（Mesh LOD は SRP 非依存） |
 | meshoptimizer | pinned commit `c8359675ccc26d8cca38e0d5b2282d5e3372356a`（2026-04-29、`Plugins/native/version.txt` 参照） |
 
-範囲外（[仕様書 §10](../../../_doc/260503_07_アーティスト修正可能MeshLOD_implementation_spec.md) 参照）：macOS / Linux / Android / iOS 向け native plugin、Runtime Player でのアセット生成、SkinnedMeshRenderer / BlendShape、コンポーネント駆動の Prefab セットアップ。Phase 8〜11（[extensions_roadmap](../../../_doc/260505_09_アーティスト修正可能MeshLOD_extensions_roadmap.md)）で順次対応予定。
+範囲外（[仕様書 §10](../../../_doc/260503_07_アーティスト修正可能MeshLOD_implementation_spec.md) 参照）：macOS / Linux / Android / iOS 向け native plugin、Runtime Player でのアセット生成、コンポーネント駆動の Prefab セットアップ。Phase 9〜11（[extensions_roadmap](../../../_doc/260505_09_アーティスト修正可能MeshLOD_extensions_roadmap.md)）で順次対応予定。**SkinnedMeshRenderer / BlendShape は Phase 8 で対応済**。
 
 ---
 
@@ -152,10 +152,11 @@ ModelImporter の **Read/Write Enabled = ON** にする。Phase 10 で `Mesh.Acq
 - LOD Cross Fade / GPU Resident Drawer の自動セットアップ
 - `AssetPostprocessor` の自動再実行
 - 後段の Mesh 圧縮（meshopt の vertex/index encode）
-- SkinnedMeshRenderer / BlendShape（**Phase 8** で対応予定）
+- SkinnedMeshRenderer / BlendShape（**Phase 8 で対応済 ✅**）
 - コンポーネント駆動の Prefab セットアップ（**Phase 9** で対応予定）
 - ModelImporter Read/Write Enabled の強制不要化（**Phase 10** で対応予定）
-- macOS native plugin（**Phase 11** で対応予定 ── 拡張計画の最後）
+- macOS native plugin（**Phase 11** で対応予定）
+- Metal Debug を使った最適化効果検証（**Phase 12** で対応予定 ── 拡張計画の最後）
 
 ---
 

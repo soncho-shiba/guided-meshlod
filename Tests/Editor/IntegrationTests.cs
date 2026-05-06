@@ -398,6 +398,179 @@ namespace Jp.Local.GuidedMeshLod.Tests
             }
         }
 
+        // ---- I-20: MeshLodSetupComponent.Apply が LOD asset 生成 + LODGroup 構築まで一括で行う（Phase 9） ----
+
+        [Test]
+        public void I_20_MeshLodSetupComponent_Apply_auto_collects_MeshFilter_and_creates_LODGroup()
+        {
+            var category = ScriptableObject.CreateInstance<MeshLodCategory>();
+            category.categoryName = "TestCategory";
+            category.settingsOverride = MakeSettings();
+            category.lodCount = 3;
+            category.targetRatios = new[] { 0.5f, 0.25f };
+            category.targetError = 0.5f;
+            category.screenRelativeTransitionHeights = new[] { 0.6f, 0.3f, 0.05f };
+
+            var go = new GameObject("__I20_SetupRoot");
+            try
+            {
+                var child = new GameObject("Mesh1");
+                child.transform.SetParent(go.transform);
+                var mf = child.AddComponent<MeshFilter>();
+                mf.sharedMesh = MakeMultiSubmeshGrid(new[] { 10 });
+                child.AddComponent<MeshRenderer>();
+
+                var setup = go.AddComponent<MeshLodSetupComponent>();
+                setup.category = category;
+                setup.outputDirectory = TempAssetDir;
+                // 注：targetMeshFilters の手動指定は無し ── 子の MF を自動収集するか確認
+
+                MeshLodSetupApplier.Apply(setup);
+
+                Assert.IsNotNull(mf.sharedMesh);
+                StringAssert.Contains("_MeshLOD_TestCategory", mf.sharedMesh.name);
+
+                var lg = go.GetComponent<LODGroup>();
+                Assert.IsNotNull(lg, "LODGroup should be added by Apply");
+                var lods = lg.GetLODs();
+                Assert.AreEqual(3, lods.Length, "LODGroup should have lodCount=3 entries");
+                for (var i = 0; i < lods.Length; i++)
+                {
+                    Assert.GreaterOrEqual(lods[i].renderers.Length, 1,
+                        $"LOD {i} must have at least 1 Renderer");
+                    Assert.IsTrue(lods[i].renderers[0] is MeshRenderer,
+                        $"LOD {i} renderer should be MeshRenderer");
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+                Object.DestroyImmediate(category);
+            }
+        }
+
+        [Test]
+        public void I_21_Category_change_alters_BuildParams_for_next_Apply()
+        {
+            var c1 = ScriptableObject.CreateInstance<MeshLodCategory>();
+            c1.categoryName = "Light";
+            c1.lodCount = 2;
+            c1.targetRatios = new[] { 0.5f };
+            c1.screenRelativeTransitionHeights = new[] { 0.5f, 0.05f };
+            c1.settingsOverride = MakeSettings();
+
+            var c2 = ScriptableObject.CreateInstance<MeshLodCategory>();
+            c2.categoryName = "Heavy";
+            c2.lodCount = 4;
+            c2.targetRatios = new[] { 0.5f, 0.25f, 0.125f };
+            c2.screenRelativeTransitionHeights = new[] { 0.6f, 0.3f, 0.1f, 0.01f };
+            c2.settingsOverride = MakeSettings();
+
+            try
+            {
+                var p1 = c1.ToBuildParams();
+                var p2 = c2.ToBuildParams();
+
+                Assert.AreEqual(2, p1.lodCount);
+                Assert.AreEqual(4, p2.lodCount);
+                Assert.AreEqual(1, p1.targetRatios.Length);
+                Assert.AreEqual(3, p2.targetRatios.Length);
+            }
+            finally
+            {
+                Object.DestroyImmediate(c1);
+                Object.DestroyImmediate(c2);
+            }
+        }
+
+        [Test]
+        public void I_22_MeshLodSetupComponent_handles_multiple_renderers()
+        {
+            var category = ScriptableObject.CreateInstance<MeshLodCategory>();
+            category.categoryName = "Multi";
+            category.settingsOverride = MakeSettings();
+            category.lodCount = 2;
+            category.targetRatios = new[] { 0.5f };
+            category.screenRelativeTransitionHeights = new[] { 0.5f, 0.05f };
+
+            var go = new GameObject("__I22_Root");
+            try
+            {
+                for (var i = 0; i < 3; i++)
+                {
+                    var child = new GameObject($"Mesh{i}");
+                    child.transform.SetParent(go.transform);
+                    var mf = child.AddComponent<MeshFilter>();
+                    mf.sharedMesh = MakeMultiSubmeshGrid(new[] { 8 });
+                    child.AddComponent<MeshRenderer>();
+                }
+
+                var setup = go.AddComponent<MeshLodSetupComponent>();
+                setup.category = category;
+                setup.outputDirectory = TempAssetDir;
+
+                MeshLodSetupApplier.Apply(setup);
+
+                var lg = go.GetComponent<LODGroup>();
+                Assert.IsNotNull(lg);
+                var lods = lg.GetLODs();
+                Assert.AreEqual(2, lods.Length);
+                Assert.AreEqual(3, lods[0].renderers.Length);
+                Assert.AreEqual(3, lods[1].renderers.Length);
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+                Object.DestroyImmediate(category);
+            }
+        }
+
+        // ---- I-23: SkinnedMeshRenderer の自動収集と LOD 構築（Phase 9） ----
+
+        [Test]
+        public void I_23_MeshLodSetupComponent_auto_collects_SkinnedMeshRenderer()
+        {
+            var category = ScriptableObject.CreateInstance<MeshLodCategory>();
+            category.categoryName = "SkinnedCat";
+            category.settingsOverride = MakeSettings();
+            category.lodCount = 2;
+            category.targetRatios = new[] { 0.5f };
+            category.targetError = 0.5f;
+            category.screenRelativeTransitionHeights = new[] { 0.5f, 0.05f };
+
+            var go = new GameObject("__I23_SkinnedRoot");
+            try
+            {
+                var child = new GameObject("SkinnedMesh");
+                child.transform.SetParent(go.transform);
+                var smr = child.AddComponent<SkinnedMeshRenderer>();
+                smr.sharedMesh = MakeSkinnedGrid(20);
+
+                var setup = go.AddComponent<MeshLodSetupComponent>();
+                setup.category = category;
+                setup.outputDirectory = TempAssetDir;
+
+                MeshLodSetupApplier.Apply(setup);
+
+                Assert.IsNotNull(smr.sharedMesh);
+                StringAssert.Contains("_MeshLOD_SkinnedCat", smr.sharedMesh.name,
+                    "SMR sharedMesh should be replaced with the LOD asset");
+
+                var lg = go.GetComponent<LODGroup>();
+                Assert.IsNotNull(lg);
+                var lods = lg.GetLODs();
+                Assert.AreEqual(2, lods.Length);
+                Assert.AreEqual(1, lods[0].renderers.Length);
+                Assert.IsTrue(lods[0].renderers[0] is SkinnedMeshRenderer,
+                    "LOD 0 renderer should be SkinnedMeshRenderer");
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+                Object.DestroyImmediate(category);
+            }
+        }
+
         // ---- I-10: per-submesh で actualLodCount が独立に決まり MeshLodRange[] も独立 ----
 
         [Test]

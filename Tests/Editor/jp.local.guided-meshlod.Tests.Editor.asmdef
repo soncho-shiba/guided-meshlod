@@ -2,6 +2,7 @@
     "name": "jp.local.guided-meshlod.Tests.Editor",
     "rootNamespace": "Jp.Local.GuidedMeshLod.Tests",
     "references": [
+        "jp.local.guided-meshlod.Runtime",
         "jp.local.guided-meshlod.Editor",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"

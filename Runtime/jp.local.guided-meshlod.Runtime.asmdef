@@ -1,12 +1,8 @@
 {
-    "name": "jp.local.guided-meshlod.Editor",
+    "name": "jp.local.guided-meshlod.Runtime",
     "rootNamespace": "Jp.Local.GuidedMeshLod",
-    "references": [
-        "jp.local.guided-meshlod.Runtime"
-    ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "references": [],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,
