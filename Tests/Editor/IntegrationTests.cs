@@ -284,6 +284,120 @@ namespace Jp.Local.GuidedMeshLod.Tests
                 "markFinalAssetNoLongerReadable=true must produce a non-readable mesh after save");
         }
 
+        // ---- I-11: Skinned mesh の boneWeights / bindposes が出力で保持される（Phase 8） ----
+
+        [Test]
+        public void I_11_Skinned_mesh_preserves_boneWeights_and_bindposes()
+        {
+            var src = MakeSkinnedGrid(20);
+            var settings = MakeSettings();
+            var parameters = new BuildParams
+            {
+                lodCount = 3,
+                targetRatios = new[] { 0.5f, 0.25f },
+                targetError = 0.5f,
+            };
+
+            var dst = MeshLodBuilder.BuildInMemory(src, parameters, settings);
+
+            Assert.AreEqual(src.vertexCount, dst.vertexCount,
+                "vertex count must be preserved (subset selection only)");
+            Assert.AreEqual(src.bindposes.Length, dst.bindposes.Length);
+            Assert.AreEqual(src.boneWeights.Length, dst.boneWeights.Length);
+            for (var i = 0; i < src.boneWeights.Length; i++)
+            {
+                Assert.AreEqual(src.boneWeights[i].boneIndex0, dst.boneWeights[i].boneIndex0,
+                    $"boneIndex0 mismatch at vertex {i}");
+                Assert.AreEqual(src.boneWeights[i].weight0, dst.boneWeights[i].weight0, 0.0001f,
+                    $"weight0 mismatch at vertex {i}");
+            }
+        }
+
+        // ---- I-12: BlendShape が出力で保持される（Phase 8） ----
+
+        [Test]
+        public void I_12_BlendShape_preserved_in_output()
+        {
+            var src = MakeBlendShapeGrid(10);
+            var settings = MakeSettings();
+            var parameters = new BuildParams
+            {
+                lodCount = 3,
+                targetRatios = new[] { 0.5f, 0.25f },
+                targetError = 0.5f,
+            };
+
+            var dst = MeshLodBuilder.BuildInMemory(src, parameters, settings);
+
+            Assert.AreEqual(src.blendShapeCount, dst.blendShapeCount);
+            for (var s = 0; s < src.blendShapeCount; s++)
+            {
+                Assert.AreEqual(src.GetBlendShapeName(s), dst.GetBlendShapeName(s));
+                Assert.AreEqual(src.GetBlendShapeFrameCount(s), dst.GetBlendShapeFrameCount(s),
+                    $"frame count mismatch for shape {s}");
+
+                for (var f = 0; f < src.GetBlendShapeFrameCount(s); f++)
+                {
+                    Assert.AreEqual(
+                        src.GetBlendShapeFrameWeight(s, f),
+                        dst.GetBlendShapeFrameWeight(s, f),
+                        $"weight mismatch for shape {s} frame {f}");
+                }
+            }
+
+            // delta vectors の内容も確認
+            var srcDelta = new Vector3[src.vertexCount];
+            var dstDelta = new Vector3[dst.vertexCount];
+            src.GetBlendShapeFrameVertices(0, 0, srcDelta, null, null);
+            dst.GetBlendShapeFrameVertices(0, 0, dstDelta, null, null);
+            CollectionAssert.AreEqual(srcDelta, dstDelta,
+                "BlendShape delta vertices must match src");
+        }
+
+        // ---- I-13: SkinnedMeshRenderer で BakeMesh が成功する（Phase 8） ----
+
+        [Test]
+        public void I_13_Output_works_with_SkinnedMeshRenderer_BakeMesh()
+        {
+            var src = MakeSkinnedGrid(20);
+            var settings = MakeSettings();
+            var parameters = new BuildParams
+            {
+                lodCount = 2,
+                targetRatios = new[] { 0.5f },
+                targetError = 0.5f,
+            };
+            var dst = MeshLodBuilder.BuildInMemory(src, parameters, settings);
+
+            var rootGo = new GameObject("__I13_SMR_Root");
+            try
+            {
+                var bone0 = new GameObject("Bone0").transform;
+                var bone1 = new GameObject("Bone1").transform;
+                bone0.SetParent(rootGo.transform);
+                bone1.SetParent(rootGo.transform);
+                bone0.localPosition = new Vector3(0, 0, 0);
+                bone1.localPosition = new Vector3(0, 10, 0); // bone を動かす
+
+                var smr = rootGo.AddComponent<SkinnedMeshRenderer>();
+                smr.sharedMesh = dst;
+                smr.bones = new[] { bone0, bone1 };
+                smr.rootBone = bone0;
+
+                var baked = new Mesh();
+                smr.BakeMesh(baked);
+
+                Assert.AreEqual(dst.vertexCount, baked.vertexCount,
+                    "BakeMesh should produce same vertex count");
+                // bone1 を動かしているので、bone1 に属する vertex は元位置から動いているはず
+                Object.DestroyImmediate(baked);
+            }
+            finally
+            {
+                Object.DestroyImmediate(rootGo);
+            }
+        }
+
         // ---- I-10: per-submesh で actualLodCount が独立に決まり MeshLodRange[] も独立 ----
 
         [Test]
@@ -456,6 +570,82 @@ namespace Jp.Local.GuidedMeshLod.Tests
                 var indices = BuildGridIndices(dim.gs, dim.n, dim.vStart);
                 mesh.SetIndices(indices, MeshTopology.Triangles, s, calculateBounds: false);
             }
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        // 上半分を bone 0、下半分を bone 1 に割り当てた skinned grid（Phase 8 用）
+        private static Mesh MakeSkinnedGrid(int gridSize)
+        {
+            var n = gridSize + 1;
+            var verts = new Vector3[n * n];
+            for (var y = 0; y < n; y++)
+            for (var x = 0; x < n; x++)
+                verts[y * n + x] = new Vector3(x, y, 0);
+
+            var indices = BuildGridIndices(gridSize, n, vStart: 0);
+
+            var bws = new BoneWeight[verts.Length];
+            var halfY = gridSize * 0.5f;
+            for (var i = 0; i < verts.Length; i++)
+            {
+                bws[i] = verts[i].y >= halfY
+                    ? new BoneWeight { boneIndex0 = 0, weight0 = 1f }
+                    : new BoneWeight { boneIndex0 = 1, weight0 = 1f };
+            }
+
+            var mesh = new Mesh
+            {
+                name = $"SkinnedGrid_{gridSize}",
+                indexFormat = verts.Length <= ushort.MaxValue
+                    ? IndexFormat.UInt16
+                    : IndexFormat.UInt32,
+            };
+            mesh.SetVertices(verts);
+            mesh.boneWeights = bws;
+            mesh.bindposes = new[] { Matrix4x4.identity, Matrix4x4.identity };
+            mesh.SetIndices(indices, MeshTopology.Triangles, 0, calculateBounds: false);
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        // BlendShape を 2 つ持つ grid（Phase 8 用）：Up = 上半分 Y+0.5、Twist = 上下で X ±0.3
+        private static Mesh MakeBlendShapeGrid(int gridSize)
+        {
+            var n = gridSize + 1;
+            var verts = new Vector3[n * n];
+            for (var y = 0; y < n; y++)
+            for (var x = 0; x < n; x++)
+                verts[y * n + x] = new Vector3(x, y, 0);
+
+            var indices = BuildGridIndices(gridSize, n, vStart: 0);
+
+            var mesh = new Mesh
+            {
+                name = $"BlendShapeGrid_{gridSize}",
+                indexFormat = verts.Length <= ushort.MaxValue
+                    ? IndexFormat.UInt16
+                    : IndexFormat.UInt32,
+            };
+            mesh.SetVertices(verts);
+            mesh.SetIndices(indices, MeshTopology.Triangles, 0, calculateBounds: false);
+
+            var halfY = gridSize * 0.5f;
+
+            var deltaUp = new Vector3[verts.Length];
+            for (var i = 0; i < verts.Length; i++)
+            {
+                deltaUp[i] = verts[i].y >= halfY ? new Vector3(0, 0.5f, 0) : Vector3.zero;
+            }
+            mesh.AddBlendShapeFrame("Up", 100f, deltaUp, null, null);
+
+            var deltaTwist = new Vector3[verts.Length];
+            for (var i = 0; i < verts.Length; i++)
+            {
+                deltaTwist[i] = new Vector3(verts[i].y >= halfY ? 0.3f : -0.3f, 0, 0);
+            }
+            mesh.AddBlendShapeFrame("Twist", 100f, deltaTwist, null, null);
+
             mesh.RecalculateBounds();
             return mesh;
         }

@@ -15,5 +15,12 @@
   },
   "testables": [
     "jp.local.guided-meshlod.Editor"
+  ],
+  "samples": [
+    {
+      "displayName": "Basic",
+      "description": "Cube / Sphere / MultiMaterial の Mesh asset を生成するスクリプト。Import 後にメニュー Tools > Guided Mesh LOD > Samples > Generate Basic Sample Meshes で .asset を作成。",
+      "path": "Samples~/Basic"
+    }
   ]
 }

@@ -74,6 +74,13 @@ namespace Jp.Local.GuidedMeshLod
             var subMeshCount = src.subMeshCount;
             var positions = src.vertices;
 
+            // Phase 8: skinned 入力の場合は bone weight を attribute として meshopt に渡し、bone 境界を保護
+            var boneWeightAttrs = SkinnedMeshTransfer.BuildBoneWeightAttributes(src);
+            var boneWeightAttrCount = boneWeightAttrs != null ? 4 : 0;
+            var boneWeightAttrWeights = boneWeightAttrs != null
+                ? new[] { 1f, 1f, 1f, 1f }
+                : null;
+
             // Step 3: per-submesh LOD generation (Phase 5: meshopt_simplifyWithAttributes via P/Invoke)
             var lodIndicesPerSubmesh = new uint[subMeshCount][][];
             var actualLodCount = new int[subMeshCount];
@@ -99,7 +106,10 @@ namespace Jp.Local.GuidedMeshLod
                         lockFlags,
                         targetIndexCount,
                         parameters.targetError,
-                        out var resultError);
+                        out var resultError,
+                        boneWeightAttrs,
+                        boneWeightAttrCount,
+                        boneWeightAttrWeights);
 
                     if (reduced.Length < 3)
                     {
@@ -190,6 +200,18 @@ namespace Jp.Local.GuidedMeshLod
 
             ChannelMapping.CopyVertexBufferStripped(src, dst, settings);
 
+            // Phase 8: skinning data の転写。vertex 集合は src と一致するためそのままコピー可能。
+            //   ChannelMapping.CopyVertexBufferStripped が SetVertices で vertex count を確定させた後、
+            //   indexFormat を立てる前に転写しておくと安全。
+            if (SkinnedMeshTransfer.IsSkinned(src))
+            {
+                SkinnedMeshTransfer.CopySkinning(src, dst);
+            }
+            if (SkinnedMeshTransfer.HasBlendShapes(src))
+            {
+                SkinnedMeshTransfer.CopyBlendShapes(src, dst);
+            }
+
             dst.indexFormat = src.indexFormat;
             dst.SetIndexBufferParams(totalIndexCount, src.indexFormat);
             WriteIndexBuffer(dst, concat, src.indexFormat);
@@ -257,6 +279,26 @@ namespace Jp.Local.GuidedMeshLod
                     throw new ArgumentException(
                         $"Submesh {i} topology is {topology}, expected Triangles.");
                 }
+            }
+
+            // Phase 8: skinned mesh の整合性検証（boneWeights / bindposes）
+            var bindposes = src.bindposes;
+            var boneWeights = src.boneWeights;
+            if (bindposes != null && bindposes.Length > 0)
+            {
+                if (boneWeights == null || boneWeights.Length != src.vertexCount)
+                {
+                    throw new ArgumentException(
+                        $"Mesh '{src.name}' has {bindposes.Length} bindposes but boneWeights length " +
+                        $"({(boneWeights == null ? 0 : boneWeights.Length)}) != vertexCount ({src.vertexCount}). " +
+                        "SkinnedMesh の boneWeights は vertexCount と一致している必要があります。");
+                }
+            }
+            else if (boneWeights != null && boneWeights.Length > 0)
+            {
+                throw new ArgumentException(
+                    $"Mesh '{src.name}' has boneWeights ({boneWeights.Length}) but no bindposes. " +
+                    "SkinnedMesh としては不完全な状態です。");
             }
 
             if (parameters.lodCount < 1 || parameters.lodCount > 8)

@@ -34,7 +34,9 @@ namespace Jp.Local.GuidedMeshLod
 
         private static bool s_dllMissingDialogShown;
 
-        // meshopt の simplify を lock 制約付きで呼ぶ。attributes は使わず positions + lock のみ。
+        // meshopt の simplify を lock 制約付きで呼ぶ。
+        // vertexAttributes / attributeCount / attributeWeights は任意。skinned mesh の bone
+        // weight を渡して bone 境界を保護する用途（Phase 8）など。null の場合は positions + lock のみで simplify。
         // resultError は meshopt が出した最終誤差（debug 用、ログに出す程度）。
         public static uint[] SimplifyWithLock(
             uint[] indices,
@@ -42,7 +44,10 @@ namespace Jp.Local.GuidedMeshLod
             byte[] vertexLock,
             int targetIndexCount,
             float targetError,
-            out float resultError)
+            out float resultError,
+            float[] vertexAttributes = null,
+            int attributeCount = 0,
+            float[] attributeWeights = null)
         {
             if (indices == null) throw new ArgumentNullException(nameof(indices));
             if (positions == null) throw new ArgumentNullException(nameof(positions));
@@ -54,6 +59,10 @@ namespace Jp.Local.GuidedMeshLod
                 return Array.Empty<uint>();
             }
 
+            var useAttrs = vertexAttributes != null && attributeCount > 0
+                && attributeWeights != null && attributeWeights.Length == attributeCount
+                && vertexAttributes.Length == positions.Length * attributeCount;
+
             // destination: 上限は input と同じサイズ。実書き込み数は戻り値で得る。
             var destination = new uint[indices.Length];
 
@@ -61,6 +70,8 @@ namespace Jp.Local.GuidedMeshLod
             GCHandle hIdx = default;
             GCHandle hPos = default;
             GCHandle hLock = default;
+            GCHandle hAttrs = default;
+            GCHandle hAttrW = default;
             try
             {
                 hDest = GCHandle.Alloc(destination, GCHandleType.Pinned);
@@ -74,6 +85,20 @@ namespace Jp.Local.GuidedMeshLod
                     lockPtr = hLock.AddrOfPinnedObject();
                 }
 
+                var attrPtr = IntPtr.Zero;
+                var attrStride = UIntPtr.Zero;
+                var attrWeightsPtr = IntPtr.Zero;
+                var attrCountUI = UIntPtr.Zero;
+                if (useAttrs)
+                {
+                    hAttrs = GCHandle.Alloc(vertexAttributes, GCHandleType.Pinned);
+                    hAttrW = GCHandle.Alloc(attributeWeights, GCHandleType.Pinned);
+                    attrPtr = hAttrs.AddrOfPinnedObject();
+                    attrStride = (UIntPtr)(sizeof(float) * attributeCount);
+                    attrWeightsPtr = hAttrW.AddrOfPinnedObject();
+                    attrCountUI = (UIntPtr)attributeCount;
+                }
+
                 UIntPtr writtenCount;
                 try
                 {
@@ -81,8 +106,8 @@ namespace Jp.Local.GuidedMeshLod
                         hDest.AddrOfPinnedObject(),
                         hIdx.AddrOfPinnedObject(), (UIntPtr)indices.Length,
                         hPos.AddrOfPinnedObject(), (UIntPtr)positions.Length, (UIntPtr)(sizeof(float) * 3),
-                        IntPtr.Zero, UIntPtr.Zero,           // no vertex_attributes
-                        IntPtr.Zero, UIntPtr.Zero,           // no attribute_weights
+                        attrPtr, attrStride,
+                        attrWeightsPtr, attrCountUI,
                         lockPtr,
                         (UIntPtr)targetIndexCount, targetError, 0u,
                         out resultError);
@@ -113,6 +138,8 @@ namespace Jp.Local.GuidedMeshLod
                 if (hDest.IsAllocated) hDest.Free();
                 if (hIdx.IsAllocated) hIdx.Free();
                 if (hPos.IsAllocated) hPos.Free();
+                if (hAttrs.IsAllocated) hAttrs.Free();
+                if (hAttrW.IsAllocated) hAttrW.Free();
                 if (hLock.IsAllocated) hLock.Free();
             }
         }
